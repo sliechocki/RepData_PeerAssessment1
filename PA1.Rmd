@@ -1,0 +1,175 @@
+---
+title: "Reproducible Research - Assignment 1"
+author: "sliechocki"
+date: '2022-06-20'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#  Activity monitoring data 
+
+Evaluation of personal movement data obtained through activity monitoring devices between October and November 2012. 
+
+### Load database
+
+The data is stored in a "csv" file. First of all, we needed to load the package we used to work on the data. After that, the code below will read the file and transform the "date" column in the proper date format:
+
+```{r Load and Preprocess}
+library(tidyverse) #Package: Tidyverse
+
+actdata<-read.csv("activity.csv",sep = ",",header = T)
+actdata$date<-as.Date(actdata$date) #Transforming "date" in a date format
+```
+
+### Total number of steps taken per day
+The first analysis was to count the number of steps acquired per day during the period established. In the first part of the work, we do not considered the missing data. 
+
+```{r, echo=TRUE}
+stepnumber<-actdata%>%
+        group_by(date)%>%
+        filter(steps!="NA")%>% #removes NA
+        summarise(counts=sum(steps,na.rm = T))
+head(stepnumber)
+```
+
+We used the histogram below to perform an exploratory analysis of the data: 
+
+```{r Histogram 1}
+ggplot(stepnumber, aes(counts))+
+        geom_histogram(bins = 25,fill="#69b3a2", alpha=.7)+
+        labs(title = "Number steps per day",
+             y="Frequency", x="Steps")+
+        theme_light(base_family = "Times New Roman",
+                    base_size = 14)+
+        theme(plot.title = element_text(face ="bold", size = 16))
+```
+
+Mean and median of the total number of steps taken per day
+```{r}
+steptable<-stepnumber%>%
+        summarise(
+                mean.steps=mean(counts, na.rm=T),
+                median.steps=median(counts, na.rm = T))
+steptable
+```
+
+In order to obtain the average activity per day, the data was grouped based on the time interval (every five minutes) and after that the mean value of the steps was calculated. 
+
+```{r Daily activity}
+timeseries<-actdata%>%
+        na.omit()%>%
+        group_by(interval)%>%
+        summarise(mean=mean(steps, na.rm=T))
+head(timeseries)
+
+ggplot(timeseries, aes(interval, mean))+
+        geom_line()+
+        labs(title = "Average steps per day",
+             y=" Mean (Steps)", x="Interval")+
+        theme_light(base_family = "Times New Roman",
+                    base_size = 14)+
+        theme(plot.title = element_text(face ="bold", size = 16))
+
+```
+
+With the "time series data" it was possible to know in which interval contains the highest number of steps:
+
+```{r Maximal Value}
+maximalnumber<-timeseries%>%
+        filter(mean==max(mean))
+print(maximalnumber)
+```
+
+### Impact of missing data (NA) on data analyis
+
+First of all, we calculated the percentage of NA in the activity monitoring data:
+
+```{r}
+percentageNA<-mean(is.na(actdata))*100
+format(round(percentageNA,2))
+```
+
+To evaluate if the percentage of NA has some impact on the analysis of the data, we replace the missing values by the average number of steps obtained in the first 5 minutes of each day:
+
+```{r Filling NA}
+fill<-actdata%>%
+        filter(interval=="5")%>%
+        summarise(mean=mean(steps, na.rm=T))%>%
+        as.numeric()
+
+#New data
+newdata<-actdata%>%
+        replace(is.na(.), format(round(fill,2)))
+```
+
+We repeat the procedure from the first part of the exercise, now using the new data. We group the data by date and calculate, the sum of the steps taken during that day. The result of this analysis was reported as the histogram below:
+
+```{r Histogram}
+h<-newdata%>%
+        group_by(date)%>%
+        summarise(
+                counts=sum(as.numeric(steps),na.rm = T))
+
+ggplot(h, aes(counts))+
+        geom_histogram(bins = 25,fill="#69b3a2", alpha=.7)+
+        labs(title = "Number steps per day",
+             y="Frequency", x="Steps")+
+        theme_light(base_family = "Times New Roman",
+                    base_size = 14)+
+        theme(plot.title = element_text(face ="bold", size = 16))
+```
+
+We could then compared the mean/median of the data with NA and the new data:
+```{r, results='asis'}
+steptable2<-h%>%
+        summarise(
+                mean.steps=mean(counts, na.rm=T),
+                median.steps=median(counts, na.rm = T))
+
+```
+
+By replacing the missing data, we observed a decrease in both measurements: 
+Mean from 10766 to 9367 and the median from 10765 to 10395. 
+
+###Are there differences in activity patterns between weekdays and weekends?
+
+To check of there was changed in activity pattern between weekdays and weekend, we first added the day of the week for each day in a new column. Based on this new column, we applied a filter that contained or not contained "Saturday" and "Sunday" to generate two different data frames. After that, the two data frame were merged in one and the profile based on this label was verified by a time series plot. 
+
+```{r Filter and Label}
+newdata$weekday<-weekdays(newdata$date)
+weekends<-c("Saturday", "Sunday") # conditional filter
+
+a<-newdata%>%filter(!weekday %in% weekends)%>%
+        mutate(Day="weekday")
+b<-newdata%>%
+        filter(weekday %in% weekends)%>%
+        mutate(Day="weekend")
+
+newdata2<-rbind(a,b) # new data frame with weekday and weekend labels
+newdata2$Day<-as.factor(newdata2$Day) #transforming in factor
+
+## Daily activity based on weekdays
+timeseries2<-newdata2%>%
+        group_by(interval, Day)%>%
+        mutate_at(vars(matches("steps")), as.numeric)%>%
+        summarise(mean=mean(steps))
+```
+
+The result of daily activity based on weekdays can be observed in the time series plot below:
+```{r}
+ggplot(timeseries2, aes(interval, mean, color=Day))+
+        geom_line()+
+        labs(title = "Average steps per day",
+             y=" Mean (Steps)", x="Interval")+
+        theme_light(base_family = "Times New Roman",
+                    base_size = 14)+
+        theme(plot.title = element_text(face ="bold", size = 16))+
+        facet_wrap(~Day,nrow = 2)
+```
+
+End of the assignment. 
+
+
